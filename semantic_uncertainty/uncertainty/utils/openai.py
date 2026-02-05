@@ -7,7 +7,21 @@ from tenacity import (retry, stop_after_attempt,  # for exponential backoff
 from openai import OpenAI
 
 
-CLIENT = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+# Initialize OpenAI client lazily to avoid errors when not using OpenAI features
+CLIENT = None
+
+def get_client():
+    """Get or create OpenAI client. Only initializes when actually needed."""
+    global CLIENT
+    if CLIENT is None:
+        api_key = os.environ.get('OPENAI_API_KEY')
+        if api_key is None:
+            raise ValueError(
+                "OPENAI_API_KEY environment variable is not set. "
+                "This is only required when using GPT models (--metric=llm_gpt-* or --entailment_model=gpt-*)."
+            )
+        CLIENT = OpenAI(api_key=api_key)
+    return CLIENT
 
 
 @retry(wait=wait_random_exponential(min=1, max=10))
@@ -26,7 +40,8 @@ def predict(prompt, temperature=1.0, model='gpt-4'):
     elif model == 'gpt-3.5':
         model = 'gpt-3.5-turbo'
 
-    output = CLIENT.chat.completions.create(
+    client = get_client()  # Get client only when actually needed
+    output = client.chat.completions.create(
         model=model,
         messages=messages,
         max_tokens=200,

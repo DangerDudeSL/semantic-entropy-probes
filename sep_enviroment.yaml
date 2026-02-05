@@ -4,9 +4,9 @@ channels:
   - nvidia
   - defaults
 dependencies:
-  - _libgcc_mutex=0.1=main
-  - _openmp_mutex=5.1=1_gnu
-  - abseil-cpp=20211102.0=hd4dd3e8_0
+  #- _libgcc_mutex=0.1=main
+  #- _openmp_mutex=5.1=1_win
+  #- abseil-cpp=20211102.0=hd4dd3e8_0
   - aiohttp=3.8.5=py311h5eee18b_0
   - aiosignal=1.2.0=pyhd3eb1b0_0
   - arrow=1.2.3=py311h06a4308_1
@@ -63,7 +63,7 @@ dependencies:
   - krb5=1.20.1=h143b758_1
   - lame=3.100=h7b6447c_0
   - lcms2=2.12=h3be6417_0
-  - ld_impl_linux-64=2.38=h1181459_1
+ # - ld_impl_linux-64=2.38=h1181459_1
   - lerc=3.0=h295c915_0
   - libboost=1.82.0=h109eef0_2
   - libbrotlicommon=1.0.9=h5eee18b_7
@@ -156,7 +156,7 @@ dependencies:
   - torchtriton=2.1.0=py311
   - torchvision=0.16.1=py311_cu118
   - typing-extensions=4.7.1=py311h06a4308_0
-  - typing_extensions=4.7.1=py311h06a4308_0
+  #- typing_extensions=4.7.1=py311h06a4308_0
   - tzdata=2023c=h04d1e81_0
   - unidecode=1.2.0=pyhd3eb1b0_0
   - urllib3=1.26.16=py311h06a4308_0

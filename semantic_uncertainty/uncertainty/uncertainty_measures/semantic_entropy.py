@@ -19,8 +19,9 @@ from uncertainty.utils import utils
 
 random.seed(10)
 
-# Set up OpenAI API credentials
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# OpenAI API credentials are set up lazily when actually needed
+# Only required when using GPT models for entailment
+openai.api_key = os.getenv("OPENAI_API_KEY")  # Optional
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 

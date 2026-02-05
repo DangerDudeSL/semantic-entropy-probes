@@ -17,7 +17,9 @@ from compute_uncertainty_measures import main as main_compute
 
 
 utils.setup_logger()
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Set up OpenAI API credentials.
+# OpenAI API key is only needed when using GPT models
+# It will be initialized lazily when actually needed
+openai.api_key = os.getenv("OPENAI_API_KEY")  # Optional: Set up OpenAI API credentials.
 
 
 def main(args):
@@ -34,8 +36,41 @@ def main(args):
     random.seed(args.random_seed)
 
     # Implement
-    user = os.environ['USER']
-    entity = os.environ['WANDB_ENT']
+    # Windows uses USERNAME, Linux uses USER
+    user = os.environ.get('USER') or os.environ.get('USERNAME', 'user')
+    
+    # Get entity from command line args, environment variable, or wandb default
+    entity = args.entity
+    if entity is None:
+        # Try WANDB_ENT for backward compatibility, then WANDB_SEM_UNC_ENTITY
+        entity = 'direndrakavindu-university-of-westminster' or os.environ.get('WANDB_SEM_UNC_ENTITY')
+    
+    if entity is None:
+        # Try to get entity from wandb login or use username as fallback
+        try:
+            import wandb.api as wandb_api
+            api = wandb_api.Api()
+            # Get the actual logged-in user's entity/username
+            viewer = api.viewer()
+            # viewer can return dict with 'username', 'entity', or 'name' field
+            entity = (viewer.get('username') or viewer.get('entity') or 
+                     viewer.get('name') or api.default_entity)
+            if entity and entity != user:
+                logging.info(f'WANDB_ENT/WANDB_SEM_UNC_ENTITY not set. Using entity from wandb login: {entity}')
+            elif not entity:
+                entity = user
+                logging.warning(f'Could not determine wandb entity. Using username as entity: {entity}. '
+                              f'Set WANDB_ENT or WANDB_SEM_UNC_ENTITY environment variable, or use --entity argument.')
+            else:
+                logging.warning(f'Entity matches username. If this causes permission errors, set WANDB_ENT=direndrakavindu or use --entity=direndrakavindu')
+        except Exception as e:
+            # If api call fails, fall back to username but warn user
+            entity = user
+            logging.warning(f'Could not determine wandb entity from API. Using username "{entity}" as entity. '
+                          f'If you get permission errors, your wandb username is likely different. '
+                          f'Set WANDB_ENT="direndrakavindu" or use --entity=direndrakavindu. '
+                          f'Original error: {e}')
+    
     slurm_jobid = os.getenv('SLURM_JOB_ID', None)
     scratch_dir = os.getenv('SCRATCH_DIR', '.')
     if not os.path.exists(f"{scratch_dir}/{user}/uncertainty"):

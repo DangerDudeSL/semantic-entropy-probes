@@ -47,8 +47,13 @@ def load_ds(dataset_name, seed, add_options=None):
         validation_dataset = [reformat(d) for d in validation_dataset]
 
     elif dataset_name == "trivia_qa":
-        dataset = datasets.load_dataset('TimoImhof/TriviaQA-in-SQuAD-format')['unmodified']
-       
+        #dataset = datasets.load_dataset('TimoImhof/TriviaQA-in-SQuAD-format',download_mode='force_redownload')['unmodified']
+        #dataset = datasets.load_dataset('TimoImhof/TriviaQA-in-SQuAD-format', split='unmodified')
+        dataset_dict = datasets.load_dataset(
+        'TimoImhof/TriviaQA-in-SQuAD-format',
+        keep_in_memory=True
+        )
+        dataset = dataset_dict['unmodified']
         dataset = dataset.train_test_split(test_size=0.2, seed=seed)
         train_dataset = dataset['train']
         validation_dataset = dataset['test']
@@ -93,7 +98,7 @@ def load_ds(dataset_name, seed, add_options=None):
         # http://participants-area.bioasq.org/datasets/ we are using training 11b
         # could also download from here https://zenodo.org/records/7655130
         # scratch_dir = os.getenv('SCRATCH_DIR', '.')
-        path = "~/uncertainty/data/bioasq/training11b.json"
+        path = os.path.expanduser("~/uncertainty/data/bioasq/training11b.json")
         with open(path, "rb") as file:
             data = json.load(file)
 
@@ -143,7 +148,7 @@ def load_ds(dataset_name, seed, add_options=None):
         for split in ["train", "dev"]:
             dataset_dictionary = {
                 "id": [], "question": [], "context": [], "answers": []}
-            path = f"~/uncertainty/data/record/{split}.json"
+            path = os.path.expanduser(f"~/uncertainty/data/record/{split}.json")
             with open(path, "rb") as file:
                 data = json.load(file)
 
