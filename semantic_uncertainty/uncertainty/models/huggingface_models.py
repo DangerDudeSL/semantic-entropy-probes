@@ -276,7 +276,15 @@ class HuggingfaceModel(BaseModel):
         if full_answer.startswith(input_data):
             input_data_offset = len(input_data)
         else:
-            raise ValueError('Have not tested this in a while.')
+            # Warning but fallback to token-based slicing
+            logging.warning(f"Input data not found at start of full_answer. \nInput: {input_data[:50]}...\nFull: {full_answer[:50]}...")
+            # Fallback: calculate offset based on generated tokens
+            input_token_len = len(inputs['input_ids'][0])
+            generated_part = self.tokenizer.decode(outputs.sequences[0][input_token_len:], skip_special_tokens=True)
+            
+            # We assume the answer is at the end. 
+            # This handles cases where full_answer != input + generated (e.g. BOS tokens mismatch)
+            input_data_offset = len(full_answer) - len(generated_part)
 
         # Remove input from answer.
         answer = full_answer[input_data_offset:]

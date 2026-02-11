@@ -1,0 +1,16 @@
+numpy<2.0.0
+# torch
+# torchvision
+# torchaudio
+transformers
+accelerate
+bitsandbytes
+fastapi
+uvicorn
+pydantic
+scikit-learn
+nltk
+psutil
+sentencepiece
+protobuf
+requests

@@ -34,8 +34,9 @@ class BaseEntailment:
 class EntailmentDeberta(BaseEntailment):
     def __init__(self):
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/deberta-v2-xlarge-mnli")
+        # Use safetensors revision to avoid torch >= 2.6 requirement (CVE-2025-32434)
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            "microsoft/deberta-v2-xlarge-mnli").to(DEVICE)
+            "microsoft/deberta-v2-xlarge-mnli", revision="refs/pr/3").to(DEVICE)
 
     def check_implication(self, text1, text2, *args, **kwargs):
         inputs = self.tokenizer(text1, text2, return_tensors="pt").to(DEVICE)

@@ -21,18 +21,46 @@ def get_p_ik(train_embeddings, is_false, eval_embeddings=None, eval_is_false=Non
     # Convert the list of tensors to a 2D tensor.
     train_embeddings_tensor = torch.cat(train_embeddings, dim=0)  # pylint: disable=no-member
     # Convert the tensor to a numpy array.
-    embeddings_array = train_embeddings_tensor.cpu().numpy()
+    embeddings_array = train_embeddings_tensor.float().cpu().numpy()
 
     # Split the data into training and test sets.
-    X_train, X_test, y_train, y_test = train_test_split(  # pylint: disable=invalid-name
-        embeddings_array, is_false, test_size=0.2, random_state=42)  # pylint: disable=invalid-name
+    if len(embeddings_array) < 2:
+        logging.warning("Dataset too small for train/test split. Using same data for both.")
+        X_train, X_test, y_train, y_test = embeddings_array, embeddings_array, is_false, is_false
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(  # pylint: disable=invalid-name
+            embeddings_array, is_false, test_size=0.2, random_state=42)  # pylint: disable=invalid-name
 
     # Fit a logistic regression model.
     model = LogisticRegression()
-    model.fit(X_train, y_train)
+    
+    # Handle case where training data has only one class (e.g. single sample)
+    if len(np.unique(y_train)) < 2:
+        logging.warning("Training data contains only one class. Skipping LogisticRegression fit.")
+        # Create a dummy prediction function that returns the single class
+        single_class = y_train[0]
+        def predict_proba_dummy(X):
+            # Return probability 1.0 for the single class, 0.0 for the other
+            # Shape (n_samples, 2). If class is 0 (True), col 0 is 1.0.
+            probs = np.zeros((len(X), 2))
+            if single_class == 0:
+                probs[:, 0] = 1.0 # P(True) = 1.0
+                probs[:, 1] = 0.0 # P(False) = 0.0
+            else:
+                probs[:, 0] = 0.0
+                probs[:, 1] = 1.0
+            return probs
+            
+        def predict_dummy(X):
+            return np.full(len(X), single_class)
+            
+        model.predict_proba = predict_proba_dummy
+        model.predict = predict_dummy
+    else:
+        model.fit(X_train, y_train)
 
     # Predict deterministically and probabilistically and compute accuracy and auroc for all splits.
-    X_eval = torch.cat(eval_embeddings, dim=0).cpu().numpy()  # pylint: disable=no-member,invalid-name
+    X_eval = torch.cat(eval_embeddings, dim=0).float().cpu().numpy()  # pylint: disable=no-member,invalid-name
     y_eval = eval_is_false
 
     Xs = [X_train, X_test, X_eval]  # pylint: disable=invalid-name
@@ -49,14 +77,42 @@ def get_p_ik(train_embeddings, is_false, eval_embeddings=None, eval_is_false=Non
         # training data set.
         if suffix == 'eval':
             model = LogisticRegression()
-            model.fit(embeddings_array, is_false)
-            convergence = {'n_iter': model.n_iter_[0], 'converged': (model.n_iter_ < model.max_iter)[0]}
+            
+            # Handle case where training data has only one class
+            if len(np.unique(is_false)) < 2:
+                logging.warning("Training data contains only one class. Skipping LogisticRegression fit for eval.")
+                single_class = is_false[0]
+                def predict_proba_dummy(X):
+                    # Return probability 1.0 for the single class, 0.0 for the other
+                    probs = np.zeros((len(X), 2))
+                    if single_class == 0:
+                        probs[:, 0] = 1.0
+                        probs[:, 1] = 0.0
+                    else:
+                        probs[:, 0] = 0.0
+                        probs[:, 1] = 1.0
+                    return probs
+                    
+                def predict_dummy(X):
+                    return np.full(len(X), single_class)
+                    
+                model.predict_proba = predict_proba_dummy
+                model.predict = predict_dummy
+                convergence = {'n_iter': 0, 'converged': True}
+            else:
+                model.fit(embeddings_array, is_false)
+                convergence = {'n_iter': model.n_iter_[0], 'converged': (model.n_iter_ < model.max_iter)[0]}
 
         y_pred = model.predict(X)
         y_pred_proba = model.predict_proba(X)
         y_preds_proba[suffix] = y_pred_proba
         acc_p_ik_train = accuracy_score(y_true, y_pred)
-        auroc_p_ik_train = roc_auc_score(y_true, y_pred_proba[:, 1])
+        try:
+            auroc_p_ik_train = roc_auc_score(y_true, y_pred_proba[:, 1])
+        except ValueError:
+            # Handle case where y_true has only one class
+            logging.warning(f"Only one class present in {suffix}. Setting AUROC to 0.5.")
+            auroc_p_ik_train = 0.5
         split_metrics = {
             f'acc_p_ik_{suffix}': acc_p_ik_train,
             f'auroc_p_ik_{suffix}': auroc_p_ik_train}

@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+torch
+transformers
+numpy
+scikit-learn
+psutil
+bitsandbytes
+regex
+accelerate
+nltk

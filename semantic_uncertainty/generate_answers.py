@@ -2,6 +2,7 @@
 import gc
 import os
 import logging
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 import random
 from tqdm import tqdm
 

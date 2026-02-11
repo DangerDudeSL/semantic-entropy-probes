@@ -9,6 +9,14 @@ from sklearn import metrics
 
 def bootstrap(function, rng, n_resamples=1000):
     def inner(data):
+        # Handle case where data has fewer than 2 samples (scipy bootstrap crashes)
+        if len(data) < 2:
+            return {
+                'std_err': 0.0,
+                'low': data[0] if len(data) > 0 else 0.0,
+                'high': data[0] if len(data) > 0 else 0.0
+            }
+
         bs = scipy.stats.bootstrap(
             (data, ), function, n_resamples=n_resamples, confidence_level=0.9,
             random_state=rng)
