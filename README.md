@@ -51,6 +51,8 @@ In `environment_export.yaml`, we list the precise versions for all Python packag
 
 ## Installation
 
+**🌐 Web Application**: To set up and use the interactive chat interface with real-time hallucination detection, see [WEB_APP_GUIDE.md](./WEB_APP_GUIDE.md).
+
 **Windows Users**: Please see [WINDOWS_SETUP_GUIDE.md](./WINDOWS_SETUP_GUIDE.md) for comprehensive Windows-specific setup instructions.
 
 To install Python with all necessary dependencies, we recommend you use conda.
