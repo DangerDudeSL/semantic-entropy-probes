@@ -1,8 +1,11 @@
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import asyncio
+import os
 from engine import engine
 from claim_filter import claim_detector
 import uvicorn
@@ -100,5 +103,27 @@ async def infer(request: QueryRequest):
         sentence_details=result.get("sentence_details", [])
     )
 
+# --- Serve built React frontend (production) ---
+# This must come AFTER all API routes so they take priority
+FRONTEND_BUILD = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+
+if os.path.exists(FRONTEND_BUILD):
+    print(f"[Static] Serving frontend from {FRONTEND_BUILD}")
+    # Serve static assets (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_BUILD, "assets")), name="static-assets")
+    
+    # Catch-all: serve index.html for SPA routing
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # Try to serve the exact file first (e.g. favicon, vite.svg)
+        file_path = os.path.join(FRONTEND_BUILD, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # Otherwise serve index.html (SPA client-side routing)
+        return FileResponse(os.path.join(FRONTEND_BUILD, "index.html"))
+else:
+    print(f"[Static] No frontend build found at {FRONTEND_BUILD} — API-only mode")
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

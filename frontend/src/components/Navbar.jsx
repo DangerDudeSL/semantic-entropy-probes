@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 import { Bot, HelpCircle, ChevronDown, Check, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
 
-const API_URL = "http://localhost:8000";
+// In dev mode (Vite on :5173), use localhost:8000. In production (served from FastAPI), use same origin.
+const API_URL = window.location.port === "5173" ? "http://localhost:8000" : window.location.origin;
 
 const Navbar = ({ status, onClear, onShowGuidance, currentModel, highlightEnabled, onToggleHighlight }) => {
     const [switching, setSwitching] = useState(false);
@@ -67,8 +68,8 @@ const Navbar = ({ status, onClear, onShowGuidance, currentModel, highlightEnable
                 <button
                     onClick={onToggleHighlight}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-300 border ${highlightEnabled
-                            ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
-                            : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
+                        ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
+                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
                         }`}
                     title={highlightEnabled ? 'Sentence highlighting is ON' : 'Sentence highlighting is OFF'}
                 >

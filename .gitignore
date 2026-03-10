@@ -169,6 +169,9 @@ debug_offload/
 /package.json
 /package-lock.json
 
+# Frontend build output
+frontend/dist/
+
 # Offload directories
 **/offload/
 **/live_offload/

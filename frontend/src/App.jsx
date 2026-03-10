@@ -7,7 +7,8 @@ import UncertaintyChart from './components/UncertaintyChart';
 import Guidance from './components/Guidance';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API_URL = "http://localhost:8000";
+// In dev mode (Vite on :5173), use localhost:8000. In production (served from FastAPI), use same origin.
+const API_URL = window.location.port === "5173" ? "http://localhost:8000" : window.location.origin;
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -143,12 +144,12 @@ function App() {
                 <div className="p-4 rounded-2xl bg-white/50 text-center">
                   <div className="text-sm text-gray-400 mb-1">Confidence</div>
                   <div className={`text-3xl font-bold ${(messages[messages.length - 1].confidence ?? 1) >= 0.75 ? 'text-green-500' :
-                      (messages[messages.length - 1].confidence ?? 1) >= 0.5 ? 'text-amber-500' : 'text-red-500'
+                    (messages[messages.length - 1].confidence ?? 1) >= 0.5 ? 'text-amber-500' : 'text-red-500'
                     }`}>
                     {((messages[messages.length - 1].confidence ?? 1) * 100).toFixed(1)}%
                   </div>
                   <div className={`text-xs mt-1 font-medium ${(messages[messages.length - 1].confidence ?? 1) >= 0.75 ? 'text-green-600' :
-                      (messages[messages.length - 1].confidence ?? 1) >= 0.5 ? 'text-amber-600' : 'text-red-600'
+                    (messages[messages.length - 1].confidence ?? 1) >= 0.5 ? 'text-amber-600' : 'text-red-600'
                     }`}>
                     {(messages[messages.length - 1].confidence ?? 1) >= 0.75 ? 'Reliable' :
                       (messages[messages.length - 1].confidence ?? 1) >= 0.5 ? 'Uncertain' : 'Likely Hallucinated'}
