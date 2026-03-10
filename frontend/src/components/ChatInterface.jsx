@@ -3,6 +3,118 @@ import React, { useEffect, useRef } from 'react';
 import { Send, Bot, User, AlertCircle, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+/**
+ * Lightweight inline markdown renderer for LLM output.
+ * Handles: **bold**, *italic*, `code`, and strips heading markers (###, ##, #).
+ */
+const renderInlineMarkdown = (text) => {
+    if (!text) return text;
+
+    // Process bold (**text**), italic (*text*), and code (`text`)
+    const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
+    let lastIndex = 0;
+    let match;
+    const parts = [];
+    let key = 0;
+
+    while ((match = regex.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            parts.push(text.slice(lastIndex, match.index));
+        }
+        if (match[2]) {
+            parts.push(<strong key={key++}>{match[2]}</strong>);
+        } else if (match[3]) {
+            parts.push(<em key={key++}>{match[3]}</em>);
+        } else if (match[4]) {
+            parts.push(
+                <code key={key++} className="bg-gray-100 text-red-600 px-1 py-0.5 rounded text-sm font-mono">
+                    {match[4]}
+                </code>
+            );
+        }
+        lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < text.length) {
+        parts.push(text.slice(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : text;
+};
+
+/**
+ * Detect what kind of "block" a sentence is and return rendering info.
+ * Returns: { type, content, level }
+ */
+const classifySentence = (text) => {
+    if (!text) return { type: 'text', content: text };
+
+    // Headings: ### Heading, ## Heading, # Heading
+    const headingMatch = text.match(/^(#{1,4})\s+(.+)$/);
+    if (headingMatch) {
+        return {
+            type: 'heading',
+            content: headingMatch[2],
+            level: headingMatch[1].length,
+        };
+    }
+
+    // Bullet items: - item, * item, • item
+    if (/^\s*[-•▪▸►]\s+/.test(text)) {
+        return { type: 'bullet', content: text.replace(/^\s*[-•▪▸►]\s+/, '') };
+    }
+
+    // Numbered items: 1. item, 2) item, a) item
+    const numberedMatch = text.match(/^\s*(\d{1,3}[.)]\s+|[a-zA-Z][.)]\s+)(.+)$/);
+    if (numberedMatch) {
+        return { type: 'numbered', label: numberedMatch[1].trim(), content: numberedMatch[2] };
+    }
+
+    // Star bullet (*) — only when at start and NOT bold pattern
+    if (/^\s*\*\s+[^*]/.test(text)) {
+        return { type: 'bullet', content: text.replace(/^\s*\*\s+/, '') };
+    }
+
+    return { type: 'text', content: text };
+};
+
+/**
+ * Render a single sentence with proper formatting.
+ * Applies heading/bullet styling + inline markdown.
+ */
+const renderFormattedSentence = (text) => {
+    const info = classifySentence(text);
+    const rendered = renderInlineMarkdown(info.content);
+
+    switch (info.type) {
+        case 'heading': {
+            const sizes = {
+                1: 'text-lg font-bold',
+                2: 'text-base font-bold',
+                3: 'text-sm font-bold uppercase tracking-wide text-gray-600',
+                4: 'text-sm font-semibold text-gray-500',
+            };
+            return (
+                <span className={`block mt-2 mb-1 ${sizes[info.level] || sizes[3]}`}>
+                    {rendered}
+                </span>
+            );
+        }
+        case 'bullet':
+            return <><span className="text-gray-400 mr-1">•</span>{rendered}</>;
+        case 'numbered':
+            return <><span className="text-gray-400 font-medium mr-1">{info.label}</span>{rendered}</>;
+        default:
+            return rendered;
+    }
+};
+
+/** Check if a sentence needs its own line (headings, bullets, numbered items) */
+const needsNewLine = (text) => {
+    if (!text) return false;
+    return /^(#{1,4}\s|[-•▪▸►*]\s|\s*\d{1,3}[.)]\s|[a-zA-Z][.)]\s)/.test(text.trim());
+};
+
 const ChatInterface = ({ messages, loading, onSend, highlightEnabled }) => {
     const [input, setInput] = React.useState('');
     const endRef = useRef(null);
@@ -50,23 +162,42 @@ const ChatInterface = ({ messages, loading, onSend, highlightEnabled }) => {
                                 {highlightEnabled && msg.sentence_details && msg.sentence_details.length > 0 ? (
                                     <div className="leading-relaxed">
                                         {msg.sentence_details.map((sent, sIdx) => {
-                                            // Calculate opacity based on entropy (0.0 to 1.0)
-                                            // Only highlight if entropy > 0.4 reasonable threshold
+                                            const newLine = needsNewLine(sent.text);
+                                            const renderedText = renderFormattedSentence(sent.text);
+
+                                            // Non-claim sentences: dimmed, no highlight, no tooltip
+                                            if (sent.is_claim === false) {
+                                                return (
+                                                    <React.Fragment key={sIdx}>
+                                                        {newLine && <br />}
+                                                        <span
+                                                            className="text-gray-400 italic transition-colors duration-300 rounded px-0.5"
+                                                            title="Non-claim (not scored)"
+                                                        >
+                                                            {renderedText}{" "}
+                                                        </span>
+                                                    </React.Fragment>
+                                                );
+                                            }
+
+                                            // Claim sentences: highlight by confidence + hover tooltip
                                             let bgStyle = {};
-                                            if (sent.entropy > 0.4) {
-                                                // Red highlight scaling with entropy
-                                                const opacity = Math.min((sent.entropy - 0.2), 0.5);
+                                            const conf = sent.confidence ?? 1;
+                                            if (conf < 0.6) {
+                                                const opacity = Math.min((1 - conf) * 0.8, 0.5);
                                                 bgStyle = { backgroundColor: `rgba(255, 59, 48, ${opacity})` };
                                             }
                                             return (
-                                                <span
-                                                    key={sIdx}
-                                                    style={bgStyle}
-                                                    className="transition-colors duration-300 rounded px-0.5 cursor-help border-b border-transparent hover:border-red-400"
-                                                    title={`Entropy: ${sent.entropy.toFixed(3)} | Confidence: ${(sent.accuracy_prob * 100).toFixed(1)}%`}
-                                                >
-                                                    {sent.text}{" "}
-                                                </span>
+                                                <React.Fragment key={sIdx}>
+                                                    {newLine && <br />}
+                                                    <span
+                                                        style={bgStyle}
+                                                        className="transition-colors duration-300 rounded px-0.5 cursor-help border-b border-transparent hover:border-red-400"
+                                                        title={`Confidence: ${(conf * 100).toFixed(1)}% (Entropy: ${sent.entropy.toFixed(3)}, Accuracy: ${(sent.accuracy_prob * 100).toFixed(1)}%)`}
+                                                    >
+                                                        {renderedText}{" "}
+                                                    </span>
+                                                </React.Fragment>
                                             );
                                         })}
                                     </div>
@@ -79,20 +210,19 @@ const ChatInterface = ({ messages, loading, onSend, highlightEnabled }) => {
                             {msg.role === 'assistant' && !msg.isError && (
                                 <div className="mt-2 text-sm">
                                     {(() => {
-                                        const ent = msg.entropy;
-                                        const acc = msg.accuracy_prob;
+                                        const conf = msg.confidence ?? 1;
                                         let label = "Reliable";
                                         let colorClass = "text-green-600 bg-green-50 border-green-200";
                                         let icon = "🛡️";
 
-                                        if (ent > 0.45) {
-                                            label = "Uncertain / Confused";
-                                            colorClass = "text-amber-600 bg-amber-50 border-amber-200";
-                                            icon = "⚠️";
-                                        } else if (acc < 0.6) {
-                                            label = "Likely Incorrect/Hallucination";
+                                        if (conf < 0.5) {
+                                            label = "Likely Hallucinated";
                                             colorClass = "text-red-600 bg-red-50 border-red-200";
                                             icon = "🚨";
+                                        } else if (conf < 0.75) {
+                                            label = "Uncertain";
+                                            colorClass = "text-amber-600 bg-amber-50 border-amber-200";
+                                            icon = "⚠️";
                                         }
 
                                         return (
@@ -101,9 +231,8 @@ const ChatInterface = ({ messages, loading, onSend, highlightEnabled }) => {
                                                     <span>{icon}</span>
                                                     <span>{label}</span>
                                                 </div>
-                                                <div className="text-xs text-gray-400 flex gap-2">
-                                                    <span>Entropy: {ent.toFixed(2)}</span>
-                                                    <span>Conf: {(acc * 100).toFixed(0)}%</span>
+                                                <div className="text-xs text-gray-400">
+                                                    <span>Confidence: {(conf * 100).toFixed(1)}%</span>
                                                 </div>
                                             </div>
                                         );

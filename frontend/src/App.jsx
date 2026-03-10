@@ -67,8 +67,8 @@ function App() {
       const botMsg = {
         role: 'assistant',
         content: res.data.answer || "Error generating response",
-        entropy: res.data.entropy,
-        accuracy_prob: res.data.accuracy_prob,
+        confidence: res.data.confidence,
+        slt_confidence: res.data.slt_confidence,
         sentence_details: res.data.sentence_details,
         timestamp: new Date()
       };
@@ -78,8 +78,7 @@ function App() {
       // Update Chart History
       setHistory(prev => [...prev, {
         question: text.substring(0, 15) + "...",
-        entropy: res.data.entropy,
-        accuracy: res.data.accuracy_prob
+        confidence: res.data.confidence
       }]);
 
     } catch (e) {
@@ -139,17 +138,27 @@ function App() {
           >
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider mb-2">Last Response</h3>
             {messages.length > 0 && messages[messages.length - 1].role === 'assistant' ? (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-2xl bg-white/50">
-                  <div className="text-sm text-gray-400">Semantic Entropy</div>
-                  <div className={`text-2xl font-bold ${messages[messages.length - 1].entropy > 0.5 ? 'text-red-500' : 'text-green-500'}`}>
-                    {messages[messages.length - 1].entropy?.toFixed(4) || "N/A"}
+              <div className="space-y-4">
+                {/* Primary: Claim-Average Confidence */}
+                <div className="p-4 rounded-2xl bg-white/50 text-center">
+                  <div className="text-sm text-gray-400 mb-1">Confidence</div>
+                  <div className={`text-3xl font-bold ${(messages[messages.length - 1].confidence ?? 1) >= 0.75 ? 'text-green-500' :
+                      (messages[messages.length - 1].confidence ?? 1) >= 0.5 ? 'text-amber-500' : 'text-red-500'
+                    }`}>
+                    {((messages[messages.length - 1].confidence ?? 1) * 100).toFixed(1)}%
+                  </div>
+                  <div className={`text-xs mt-1 font-medium ${(messages[messages.length - 1].confidence ?? 1) >= 0.75 ? 'text-green-600' :
+                      (messages[messages.length - 1].confidence ?? 1) >= 0.5 ? 'text-amber-600' : 'text-red-600'
+                    }`}>
+                    {(messages[messages.length - 1].confidence ?? 1) >= 0.75 ? 'Reliable' :
+                      (messages[messages.length - 1].confidence ?? 1) >= 0.5 ? 'Uncertain' : 'Likely Hallucinated'}
                   </div>
                 </div>
-                <div className="p-4 rounded-2xl bg-white/50">
-                  <div className="text-sm text-gray-400">Accuracy Prob</div>
-                  <div className="text-2xl font-bold text-blue-500">
-                    {messages[messages.length - 1].accuracy_prob?.toFixed(4) || "N/A"}
+                {/* Secondary: SLT Confidence */}
+                <div className="p-3 rounded-xl bg-gray-50 text-center">
+                  <div className="text-xs text-gray-400">SLT Probe Score</div>
+                  <div className="text-lg font-semibold text-gray-500">
+                    {((messages[messages.length - 1].slt_confidence ?? 0) * 100).toFixed(1)}%
                   </div>
                 </div>
               </div>

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncio
 from engine import engine
+from claim_filter import claim_detector
 import uvicorn
 import contextlib
 
@@ -13,6 +14,7 @@ async def lifespan(app: FastAPI):
     # Startup
     try:
         engine.load_probes()
+        claim_detector.load_nli_model()
         success = engine.load_model()
         if not success:
             print("WARNING: Model failed to load on startup.")
@@ -38,13 +40,16 @@ class QueryRequest(BaseModel):
 
 class SentenceDetail(BaseModel):
     text: str
-    entropy: float
-    accuracy_prob: float
+    confidence: float = 1.0
+    entropy: float = 0.0
+    accuracy_prob: float = 1.0
+    is_claim: bool = True
+    source: str = "sentencizer"
 
 class QueryResponse(BaseModel):
     answer: str
-    entropy: float
-    accuracy_prob: float
+    confidence: float = 1.0
+    slt_confidence: float = 0.0
     sentence_details: list[SentenceDetail] = []
     error: str = None
 
@@ -54,7 +59,8 @@ def get_status():
         "model_loaded": engine.model is not None,
         "probes_loaded": engine.probes is not None,
         "model_name": engine.model_name,
-        "probe_name": engine.selected_probe['name'] if engine.selected_probe else "None"
+        "probe_name": engine.selected_probe['name'] if engine.selected_probe else "None",
+        "claim_detector": "nli" if claim_detector.nli_available else "regex-only",
     }
 
 class SetModelRequest(BaseModel):
@@ -85,13 +91,12 @@ async def infer(request: QueryRequest):
     result = await asyncio.to_thread(engine.generate_response, request.question)
     
     if "error" in result:
-         # Still return 200 OK so frontend can display the error nicely
-         return QueryResponse(answer="", entropy=0.0, accuracy_prob=0.0, error=result["error"])
+         return QueryResponse(answer="", confidence=1.0, slt_confidence=0.0, error=result["error"])
          
     return QueryResponse(
         answer=result["answer"],
-        entropy=result["entropy"],
-        accuracy_prob=result["accuracy_prob"],
+        confidence=result["confidence"],
+        slt_confidence=result.get("slt_confidence", 0.0),
         sentence_details=result.get("sentence_details", [])
     )
 

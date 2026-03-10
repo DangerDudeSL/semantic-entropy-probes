@@ -8,4 +8,5 @@ psutil
 bitsandbytes
 regex
 accelerate
+pysbd
 nltk

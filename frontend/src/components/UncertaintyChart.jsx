@@ -12,20 +12,31 @@ const UncertaintyChart = ({ data }) => {
         labels: data.map((_, i) => `Q${i + 1}`),
         datasets: [
             {
-                label: 'Semantic Entropy (Uncertainty)',
-                data: data.map(d => d.entropy),
-                borderColor: '#ff3b30',
-                backgroundColor: 'rgba(255, 59, 48, 0.1)',
-                tension: 0.4,
-                fill: true,
-            },
-            {
-                label: 'Accuracy Probability',
-                data: data.map(d => d.accuracy),
+                label: 'Confidence',
+                data: data.map(d => d.confidence ?? 0),
                 borderColor: '#0071e3',
-                backgroundColor: 'rgba(0, 113, 227, 0.05)',
+                backgroundColor: (ctx) => {
+                    const chart = ctx.chart;
+                    const { ctx: canvasCtx, chartArea } = chart;
+                    if (!chartArea) return 'rgba(0, 113, 227, 0.1)';
+                    const gradient = canvasCtx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+                    gradient.addColorStop(0, 'rgba(255, 59, 48, 0.15)');    // Red at bottom (low confidence)
+                    gradient.addColorStop(0.5, 'rgba(255, 179, 0, 0.1)');  // Amber in middle
+                    gradient.addColorStop(1, 'rgba(52, 199, 89, 0.15)');    // Green at top (high confidence)
+                    return gradient;
+                },
                 tension: 0.4,
                 fill: true,
+                pointBackgroundColor: (ctx) => {
+                    const val = ctx.raw;
+                    if (val >= 0.75) return '#34c759';
+                    if (val >= 0.5) return '#ffb300';
+                    return '#ff3b30';
+                },
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 5,
+                pointHoverRadius: 7,
             }
         ],
     };
@@ -46,17 +57,23 @@ const UncertaintyChart = ({ data }) => {
             tooltip: {
                 mode: 'index',
                 intersect: false,
-                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
                 titleColor: '#000',
                 bodyColor: '#666',
                 borderColor: '#ddd',
                 borderWidth: 1,
-                padding: 10,
-                displayColors: true,
+                padding: 12,
+                displayColors: false,
                 callbacks: {
                     title: (items) => {
                         const idx = items[0].dataIndex;
                         return data[idx].question;
+                    },
+                    label: (item) => {
+                        const val = item.raw;
+                        const pct = (val * 100).toFixed(1);
+                        const label = val >= 0.75 ? 'Reliable' : val >= 0.5 ? 'Uncertain' : 'Hallucinated';
+                        return `Confidence: ${pct}% (${label})`;
                     }
                 }
             }
@@ -69,7 +86,8 @@ const UncertaintyChart = ({ data }) => {
                     color: '#f0f0f0'
                 },
                 ticks: {
-                    font: { family: 'Inter', size: 10 }
+                    font: { family: 'Inter', size: 10 },
+                    callback: (v) => `${(v * 100).toFixed(0)}%`
                 }
             },
             x: {

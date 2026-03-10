@@ -8,7 +8,7 @@ const Guidance = ({ onClose }) => {
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-[#f5f5f7]">
                     <h2 className="text-xl font-semibold flex items-center gap-2">
                         <Info className="text-[#0071e3]" size={24} />
-                        Understanding Uncertainty Metrics
+                        Understanding Confidence Scores
                     </h2>
                     <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
                         <X size={20} />
@@ -17,62 +17,66 @@ const Guidance = ({ onClose }) => {
 
                 <div className="p-6 space-y-6 overflow-y-auto max-h-[80vh]">
 
-                    {/* Semantic Entropy Section */}
+                    {/* What is Confidence */}
                     <section>
-                        <h3 className="text-lg font-semibold mb-2 text-gray-800">1. Semantic Entropy (Confusion)</h3>
-                        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
-                            <p className="text-gray-700 leading-relaxed">
-                                <strong>What it means:</strong> This measures how "confused" the model is about the <em>meaning</em> of its answer.
-                            </p>
-                            <p className="text-gray-600 mt-2 text-sm">
-                                If the model generates 5 different sentences, do they all mean the same thing?
-                                <br />
-                                • <strong>Low Entropy (0.0):</strong> The model is consistent. All generations have the same meaning.
-                                <br />
-                                • <strong>High Entropy (&gt; 0.5):</strong> The model is hallucinating or confused. It is generating answers with conflicting meanings.
-                            </p>
-                        </div>
-                    </section>
-
-                    {/* Confidence/Accuracy Section */}
-                    <section>
-                        <h3 className="text-lg font-semibold mb-2 text-gray-800">2. Confidence (Accuracy Probability)</h3>
+                        <h3 className="text-lg font-semibold mb-2 text-gray-800">How Confidence Works</h3>
                         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
                             <p className="text-gray-700 leading-relaxed">
-                                <strong>What it means:</strong> This is a score predicted by a probe trained to spot "correct" answers.
+                                <strong>Confidence</strong> is a unified score that combines two probe signals:
+                                <strong> semantic entropy</strong> (how confused the model is) and <strong>accuracy probability</strong> (how correct the answer looks).
                             </p>
                             <p className="text-gray-600 mt-2 text-sm">
-                                • <strong>High Confidence (&gt; 90%):</strong> The probe believes this sentence looks like a correct answer.
-                                <br />
-                                • <strong>Low Confidence (&lt; 50%):</strong> The probe spots patterns often found in incorrect answers.
+                                The aggregate score is the <strong>average confidence of all factual claim sentences</strong>,
+                                ignoring filler, jokes, and meta-commentary. This gives a more reliable assessment than scoring the entire sequence at once.
                             </p>
                         </div>
                     </section>
 
-                    {/* Contradiction Section */}
+                    {/* Score Ranges */}
                     <section>
-                        <h3 className="text-lg font-semibold mb-2 text-gray-800 flex items-center gap-2">
-                            <AlertTriangle size={20} className="text-red-500" />
-                            What if they match?
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="p-4 border rounded-xl bg-green-50/50 border-green-100">
-                                <div className="font-medium text-green-800 mb-1 flex items-center gap-2">
+                        <h3 className="text-lg font-semibold mb-2 text-gray-800">Score Ranges</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="p-4 border rounded-xl bg-green-50/50 border-green-100 text-center">
+                                <div className="font-medium text-green-800 mb-1 flex items-center justify-center gap-2">
                                     <ShieldCheck size={16} /> Reliable
                                 </div>
+                                <div className="text-2xl font-bold text-green-600 my-1">&ge; 75%</div>
                                 <div className="text-xs text-green-700">
-                                    Low Entropy + High Confidence. The model is consistent and the answer looks correct.
+                                    Model is consistent and confident in its answer.
                                 </div>
                             </div>
 
-                            <div className="p-4 border rounded-xl bg-red-50/50 border-red-100">
-                                <div className="font-medium text-red-800 mb-1 flex items-center gap-2">
-                                    <AlertTriangle size={16} /> Hallucination
+                            <div className="p-4 border rounded-xl bg-amber-50/50 border-amber-100 text-center">
+                                <div className="font-medium text-amber-800 mb-1 flex items-center justify-center gap-2">
+                                    <AlertTriangle size={16} /> Uncertain
                                 </div>
-                                <div className="text-xs text-red-700">
-                                    High Entropy + Low Confidence. The model is guessing and confusing itself.
+                                <div className="text-2xl font-bold text-amber-600 my-1">50–74%</div>
+                                <div className="text-xs text-amber-700">
+                                    Model shows some uncertainty. Verify with other sources.
                                 </div>
                             </div>
+
+                            <div className="p-4 border rounded-xl bg-red-50/50 border-red-100 text-center">
+                                <div className="font-medium text-red-800 mb-1 flex items-center justify-center gap-2">
+                                    <AlertTriangle size={16} /> Hallucinated
+                                </div>
+                                <div className="text-2xl font-bold text-red-600 my-1">&lt; 50%</div>
+                                <div className="text-xs text-red-700">
+                                    Model is likely guessing. Do not trust this answer.
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* SLT Score */}
+                    <section>
+                        <h3 className="text-lg font-semibold mb-2 text-gray-800">SLT Probe Score</h3>
+                        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4">
+                            <p className="text-gray-600 text-sm leading-relaxed">
+                                The <strong>SLT Probe Score</strong> shown in the metrics panel is the confidence computed from the
+                                second-to-last token of the entire generated sequence. This is the raw probe output and may be less reliable
+                                for long, multi-sentence answers. It is provided as a reference for comparison.
+                            </p>
                         </div>
                     </section>
 

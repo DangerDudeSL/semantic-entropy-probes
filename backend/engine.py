@@ -5,23 +5,19 @@ import pickle
 import torch
 import numpy as np
 import psutil
-import nltk
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, logging
+from sentence_segmenter import split_sentences_with_spans, get_backend_name
+from claim_filter import claim_detector
 
 # Configure logging
 logging.set_verbosity_info()
 logger = logging.get_logger("transformers")
 
-# Ensure NLTK data is available
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    print("Downloading NLTK punkt tokenizer...")
-    nltk.download('punkt')
+print(f"[Sentence Segmenter] Using backend: {get_backend_name()}")
 
 # Constants
 # Constants
-DEFAULT_MODEL_NAME = "meta-llama/Llama-2-7b-hf"
+DEFAULT_MODEL_NAME = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROBE_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "semantic_entropy_probes", "models", "Llama2-7b_inference.pkl")
 
@@ -213,11 +209,14 @@ class InferenceEngine:
         print(f"[DEBUG] full_text length: {len(full_text)}, prompt_text length: {len(prompt_text)}, answer_text length: {len(answer_text)}")
 
         if not answer_text:
-             return {"answer": "", "entropy": 0.0, "accuracy_prob": 0.0, "sentence_details": []}
+             return {"answer": "", "confidence": 1.0, "slt_confidence": 1.0, "sentence_details": []}
 
-        # 1. NLP Sentence Splitting
-        sentences = nltk.sent_tokenize(answer_text)
-        print(f"[DEBUG] Detected {len(sentences)} sentences.")
+        # 1. Robust Sentence Splitting (spaCy → pysbd → regex fallback)
+        span_results = split_sentences_with_spans(answer_text)
+        sentences = [s["sentence"] for s in span_results]
+        sources = [s["source"] for s in span_results]
+        claim_flags = claim_detector.classify_sentences(sentences)
+        print(f"[DEBUG] Detected {len(sentences)} sentences ({sum(claim_flags)} claims, {len(sentences) - sum(claim_flags)} non-claims). Backend: {get_backend_name()}")
 
         # 2. Pre-compute hidden states for the FULL sequence
         full_inputs = {'input_ids': generated_ids, 'attention_mask': torch.ones_like(generated_ids)}
@@ -228,7 +227,7 @@ class InferenceEngine:
         all_hidden_states = outputs.hidden_states # Tuple of (batch, seq, dim)
         
         # 3. Extract OVERALL SLT (second-to-last token of full answer)
-        # This is the PRIMARY score - most reliable, matches training
+        # This is a SECONDARY reference score — kept for comparison
         overall_slt_idx = generated_ids.shape[1] - 2  # Second-to-last token
         
         # Bounds checking
@@ -243,7 +242,7 @@ class InferenceEngine:
         
         overall_slt_states = np.stack(overall_extracted_states)
         
-        # Run probes on overall SLT for primary scores
+        # Run probes on overall SLT for secondary scores
         overall_entropy = 0.0
         overall_accuracy = 0.0
         
@@ -318,7 +317,14 @@ class InferenceEngine:
                          if slt_idx < prompt_len:
                              slt_idx = prompt_len
                          
-                         # Extract states
+                         # Skip probe computation for non-claim sentences
+                         if not claim_flags[current_sent_idx]:
+                             sentence_entropies.append(0.0)
+                             sentence_accuracies.append(1.0)
+                             current_sent_idx += 1
+                             continue
+                         
+                         # Extract states (only for claims)
                          extracted_states = []
                          for layer_state in all_hidden_states:
                             vec = layer_state[0, slt_idx, :].cpu().numpy()
@@ -326,7 +332,7 @@ class InferenceEngine:
                          
                          sentence_slt_states = np.stack(extracted_states)
                          
-                         # Run probes
+                         # Run probes on claim-bearing sentences
                          sent_unc = 0.0
                          sent_acc = 0.0
                          
@@ -352,38 +358,81 @@ class InferenceEngine:
             # Fill remaining if any
             while len(sentence_entropies) < len(sentences):
                  sentence_entropies.append(0.0)
-                 sentence_accuracies.append(0.0)
+                 sentence_accuracies.append(1.0)
+
+            print(f"[DEBUG] Sentence scores - matched {current_sent_idx}/{len(sentences)} sentences")
+            for i in range(len(sentences)):
+                print(f"[DEBUG]   [{i}] ent={sentence_entropies[i]:.4f} acc={sentence_accuracies[i]:.4f} claim={claim_flags[i]}")
+
+            # CONSISTENCY FIX: When there is exactly one claim sentence,
+            # use the overall SLT scores (more reliable, matches training)
+            # so the per-sentence and aggregate badge show the same values.
+            claim_indices = [i for i, flag in enumerate(claim_flags) if flag]
+            if len(claim_indices) == 1:
+                ci = claim_indices[0]
+                sentence_entropies[ci] = overall_entropy
+                sentence_accuracies[ci] = overall_accuracy
 
             # Prepare sentence details for frontend highlighting
+            claim_confidences = []  # Collect claim sentence confidences for aggregate
             for i, sent in enumerate(sentences):
                 ent = sentence_entropies[i] if i < len(sentence_entropies) else 0.0
-                acc = sentence_accuracies[i] if i < len(sentence_accuracies) else 0.0
+                acc = sentence_accuracies[i] if i < len(sentence_accuracies) else 1.0
+                # Unified confidence: average of (1-entropy) and accuracy_prob
+                conf = (acc + (1.0 - ent)) / 2.0
+                
+                is_claim = claim_flags[i] if i < len(claim_flags) else True
+                if is_claim:
+                    claim_confidences.append(conf)
+                
                 sentence_details.append({
                     "text": sent,
+                    "confidence": float(conf),
                     "entropy": float(ent),
-                    "accuracy_prob": float(acc)
+                    "accuracy_prob": float(acc),
+                    "is_claim": is_claim,
+                    "source": sources[i] if i < len(sources) else "unknown",
                 })
             
             print(f"[DEBUG] Successfully computed {len(sentence_details)} sentence details")
             
         except Exception as e:
             print(f"[WARNING] Sentence-level analysis failed: {e}")
-            # Fallback: return sentences without individual scores
+            # Fallback: return sentences with overall SLT scores
+            overall_conf = (overall_accuracy + (1.0 - overall_entropy)) / 2.0
+            claim_confidences = []
             sentence_details = []
-            for sent in sentences:
+            for i, sent in enumerate(sentences):
+                is_claim = claim_flags[i] if i < len(claim_flags) else True
+                if is_claim:
+                    claim_confidences.append(overall_conf)
                 sentence_details.append({
                     "text": sent,
+                    "confidence": float(overall_conf),
                     "entropy": float(overall_entropy),
-                    "accuracy_prob": float(overall_accuracy)
+                    "accuracy_prob": float(overall_accuracy),
+                    "is_claim": is_claim,
+                    "source": sources[i] if i < len(sources) else "unknown",
                 })
+
+        # Compute aggregate confidence (mean of claim sentences)
+        if claim_confidences:
+            aggregate_confidence = sum(claim_confidences) / len(claim_confidences)
+        else:
+            # No claim sentences — default to high confidence (nothing to hallucinate)
+            aggregate_confidence = 1.0
+        
+        # Compute SLT confidence (secondary reference)
+        slt_confidence = (overall_accuracy + (1.0 - overall_entropy)) / 2.0
+        
+        print(f"[DEBUG] Aggregate confidence: {aggregate_confidence:.3f} (from {len(claim_confidences)} claims), SLT confidence: {slt_confidence:.3f}")
 
         return {
             "answer": answer_text,
-            "entropy": float(overall_entropy),           # Primary score from overall SLT
-            "accuracy_prob": float(overall_accuracy),    # Primary score from overall SLT
+            "confidence": float(aggregate_confidence),      # PRIMARY: claim-average
+            "slt_confidence": float(slt_confidence),        # SECONDARY: overall SLT
             "sentence_count": len(sentences),
-            "sentence_details": sentence_details,        # Approximate breakdown
-            "is_long_answer": len(sentences) > 2         # Warning flag for reliability
+            "sentence_details": sentence_details,
         }
 
 # Singleton instance
